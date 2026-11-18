@@ -1,0 +1,88 @@
+// Banco do painel (Postgres). Mídia (vídeos, áudios, thumbs) continua em arquivos em /data;
+// aqui ficam os dados e, principalmente, as respostas do Claude, para não pagar duas vezes pelo mesmo pedido.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Corte (projeto do editor). `dados` guarda o objeto completo que o painel usa (name, props, meta...).
+model Projeto {
+  id           String   @id
+  nome         String
+  dados        Json
+  criadoEm     DateTime
+  atualizadoEm DateTime
+
+  @@map("projetos")
+}
+
+/// Publicação em YouTube, TikTok ou Instagram (manual). `dados` é o objeto completo.
+model Publicacao {
+  id           String    @id
+  plataforma   String
+  projetoId    String?
+  status       String
+  /// horário em que o painel envia (TikTok); o YouTube agenda sozinho
+  agendarEm    DateTime?
+  dados        Json
+  criadoEm     DateTime
+  atualizadoEm DateTime
+
+  @@index([projetoId])
+  @@index([status])
+  @@map("publicacoes")
+}
+
+/// Cache das respostas do Claude: mesma entrada (modelo + instruções + contexto) → mesma resposta, sem gastar token.
+model RespostaIA {
+  chave       String   @id
+  tipo        String
+  modelo      String
+  resultado   Json
+  usos        Int      @default(0)
+  criadoEm    DateTime @default(now())
+  ultimoUsoEm DateTime @default(now())
+
+  @@index([tipo])
+  @@map("respostas_ia")
+}
+
+/// Pedido de "sugerir cortes" (sobrevive a reinício e é reaproveitado para a mesma gravação).
+model SugestaoCortes {
+  id           String   @id
+  chave        String
+  src          String
+  status       String
+  dados        Json
+  criadoEm     DateTime
+  atualizadoEm DateTime @updatedAt
+
+  @@index([chave])
+  @@map("sugestoes_cortes")
+}
+
+/// Plano do dia (aba Hoje), um por data (America/Sao_Paulo).
+model PlanoDia {
+  dia      String   @id
+  dados    Json
+  geradoEm DateTime
+
+  @@map("planos_dia")
+}
+
+/// Produção automática: uma gravação bruta vira Shorts (publicados sozinhos) e um vídeo longo (aguarda aprovação)
+model Producao {
+  id           String   @id
+  status       String
+  dados        Json
+  criadoEm     DateTime
+  atualizadoEm DateTime
+
+  @@map("producoes")
+}

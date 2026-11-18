@@ -1,0 +1,57 @@
+services:
+  # Postgres do painel (cortes, publicações e respostas do Claude guardadas)
+  banco:
+    image: postgres:18-alpine
+    container_name: mesa-de-corte-banco
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=mesa
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      - POSTGRES_DB=mesa_de_corte
+    # só no localhost, na 5433, para o Prisma Studio e o servidor rodando fora do Docker
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - banco-dados:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mesa -d mesa_de_corte"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mesa-de-corte:
+    build: .
+    image: mesa-de-corte:latest
+    container_name: mesa-de-corte
+    restart: unless-stopped
+    # publicado só no localhost da máquina; a porta 3000 fica para o painel do Pipeline
+    ports:
+      - "127.0.0.1:3100:3100"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # dentro do container precisa escutar em 0.0.0.0 para o Docker encaminhar a porta
+      - HOST=0.0.0.0
+      - PORT=3100
+      - PUBLIC_URL=http://localhost:3100
+      - VIDEOS_DIR=/videos
+      - YOUTUBE_CLIENT_SECRET=/secrets/client_secret.json
+      - PONTE_URL=http://host.docker.internal:3101
+      - DATABASE_URL=postgresql://mesa:${POSTGRES_PASSWORD}@banco:5432/mesa_de_corte
+    depends_on:
+      banco:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data
+      - ./config:/config
+      # gravações e músicas (com escrita: o painel move vídeos removidos para D:/Videos/.lixeira-painel)
+      # e a credencial do Google do Pipeline (só leitura)
+      - ${VIDEOS_HOST_DIR:-D:/Videos}:/videos
+      - ${GOOGLE_CLIENT_SECRET_HOST:-D:/Pipeline/secrets/client_secret.json}:/secrets/client_secret.json:ro
+    shm_size: "1gb"
+
+volumes:
+  banco-dados:
